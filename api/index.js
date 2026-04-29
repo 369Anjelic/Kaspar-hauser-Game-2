@@ -2,11 +2,13 @@ const express = require('express');
 const cors = require('cors');
 const Anthropic = require('@anthropic-ai/sdk');
 const axios = require('axios');
+const path = require('path');
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
+app.use(express.static(path.join(__dirname, '..')));
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
 const deepgramKey = process.env.DEEPGRAM_API_KEY;
