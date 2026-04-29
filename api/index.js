@@ -140,4 +140,16 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', anthropic: !!apiKey ? 'configured' : 'missing', deepgram: !!deepgramKey ? 'configured' : 'missing' });
 });
 
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'index.html'));
+});
+
+app.get('/:file(\\w+\\.html)', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', req.params.file));
+});
+
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'index.html'));
+});
+
 module.exports = app;
