@@ -17,6 +17,10 @@ server.js
 api/
 /api/
 
+# User Data (3-Wort-Authentifizierung + Chat-History)
+user_data/
+/user_data/
+
 # Node Dependencies
 node_modules/
 package-lock.json

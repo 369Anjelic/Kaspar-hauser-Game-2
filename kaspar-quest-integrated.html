@@ -602,28 +602,30 @@
   </div>
 </footer>
 
-<!-- AUTH MODAL -->
+<!-- AUTH MODAL - 3-WORT SYSTEM -->
 <div id="auth-modal" class="modal-overlay">
   <div class="modal-box">
+    <!-- Einloggen mit Worten -->
     <div id="form-login">
-      <h2>Einloggen</h2>
-      <p class="modal-sub">Willkommen zurück, Detektiv.</p>
+      <h2>🔐 Deine 3 Geheimworte</h2>
+      <p class="modal-sub">Gib deine 3 Geheimworte ein um einzuloggen.</p>
       <div id="login-err" class="error-box"></div>
-      <input class="form-input" type="email" id="login-email" placeholder="E-Mail" onkeypress="if(event.key==='Enter')submitLogin()">
-      <input class="form-input" type="password" id="login-pw" placeholder="Passwort" onkeypress="if(event.key==='Enter')submitLogin()">
-      <button class="btn btn-gold" onclick="submitLogin()" style="width:100%;padding:1rem;">Einloggen</button>
-      <div class="modal-switch"><a onclick="switchAuthForm('register')">Registrieren</a></div>
+      <input class="form-input" type="text" id="login-words" placeholder="z.B. berg-adler-nacht" onkeypress="if(event.key==='Enter')submitWordsLogin()">
+      <button class="btn btn-gold" onclick="submitWordsLogin()" style="width:100%;padding:1rem;">Einloggen</button>
+      <div class="modal-switch"><a onclick="switchAuthForm('register')">Neue Worte generieren</a></div>
       <button class="btn btn-ghost modal-cancel" onclick="closeAuth()">Abbrechen</button>
     </div>
+    <!-- Neue Worte generieren -->
     <div id="form-register" style="display:none;">
-      <h2>Registrieren</h2>
-      <p class="modal-sub">Werde Teil der Kaspar Hauser Quest.</p>
+      <h2>✨ Neue Geheimworte</h2>
+      <p class="modal-sub">Deine persönlichen 3 Geheimworte - lass sie dir ein!</p>
       <div id="reg-err" class="error-box"></div>
-      <input class="form-input" type="text" id="reg-name" placeholder="Benutzername" onkeypress="if(event.key==='Enter')submitRegister()">
-      <input class="form-input" type="email" id="reg-email" placeholder="E-Mail" onkeypress="if(event.key==='Enter')submitRegister()">
-      <input class="form-input" type="password" id="reg-pw" placeholder="Passwort (min. 6 Zeichen)" onkeypress="if(event.key==='Enter')submitRegister()">
-      <button class="btn btn-gold" onclick="submitRegister()" style="width:100%;padding:1rem;">Account erstellen</button>
-      <div class="modal-switch">Schon registriert? <a onclick="switchAuthForm('login')">Einloggen</a></div>
+      <div id="magic-words-display" style="background:var(--primary);color:white;padding:2rem;border-radius:8px;text-align:center;margin:1.5rem 0;font-size:1.3rem;font-weight:600;font-family:monospace;letter-spacing:2px;">
+        Klick auf den Button um Worte zu generieren...
+      </div>
+      <button class="btn btn-gold" onclick="generateMagicWords()" style="width:100%;padding:1rem;margin-bottom:1rem;">✨ Geheimworte Generieren</button>
+      <button class="btn btn-outline" onclick="copyMagicWords()" style="width:100%;padding:1rem;">📋 Kopieren</button>
+      <div class="modal-switch"><a onclick="switchAuthForm('login')">Ich habe schon Worte</a></div>
       <button class="btn btn-ghost modal-cancel" onclick="closeAuth()">Abbrechen</button>
     </div>
   </div>
@@ -1216,6 +1218,33 @@ function checkJoinParam() {
   }, 800);
 }
 
+// ===== FORTSCHRITT SPEICHERN =====
+function saveProgress() {
+  const words = localStorage.getItem('kq_words');
+  if (!words) return; // Kein Login, nichts speichern
+
+  localStorage.setItem('kq_questState', JSON.stringify(questState));
+
+  // Async Backend-Speicherung (ohne zu warten)
+  fetch('/api/save-progress', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ words: words, questState: questState })
+  }).catch(() => {}); // Fehler ignorieren
+}
+
+function saveChat(message, role = 'user') {
+  const words = localStorage.getItem('kq_words');
+  if (!words) return; // Kein Login, nichts speichern
+
+  // Async Backend-Speicherung (ohne zu warten)
+  fetch('/api/save-chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ words: words, message: message, role: role })
+  }).catch(() => {}); // Fehler ignorieren
+}
+
 // ===== QUEST LOGIK =====
 function getQuestResponse(userMsg) {
   if (!questState.active) return null;
@@ -1235,12 +1264,14 @@ function getQuestResponse(userMsg) {
     animateTalers();
     const wasLast = questState.currentIndex === KASPAR_QUESTS.length - 1;
     questState.currentIndex++;
+    saveProgress(); // 💾 Fortschritt speichern
     if (wasLast) {
       questState.active = false;
       questState.totalSolved % 10 === 0 ? showLevelUp(questState.level) : loadLeaderboard();
       questState.level++;
       updateLevelBadge();
       renderRouteGrid();
+      saveProgress(); // 💾 Fortschritt speichern
       return `${q.onCorrect}\n\n✓ ${questState.solved.length}/10 Rätsel gelöst\n✓ ${questState.totalPoints} Punkte gesamt\n✓ ${questState.totalTalers} Taler verdient`;
     }
     // Show image for next spot
@@ -1293,10 +1324,30 @@ function getQuestResponse(userMsg) {
 }
 
 function startQuest() {
-  const savedLevel = questState.level;
-  const savedTotalSolved = questState.totalSolved;
-  const savedTotalTalers = questState.totalTalers;
-  questState = { active:true, currentIndex:0, attempts:0, totalPoints:0, totalTalers:savedTotalTalers, teamMembers:[], solved:[], locked:false, lockedUntil:0, teamCode:null, teamReady:false, level:savedLevel, totalSolved:savedTotalSolved };
+  // Fortschritt aus localStorage laden (3-Wort-System)
+  const savedQuestState = localStorage.getItem('kq_questState');
+  if (savedQuestState) {
+    try {
+      questState = JSON.parse(savedQuestState);
+      questState.active = true;
+      questState.attempts = 0;
+      questState.locked = false;
+      questState.lockedUntil = 0;
+      questState.teamCode = null;
+      questState.teamReady = false;
+    } catch {
+      // Fallback wenn localStorage corrupted
+      const savedLevel = questState.level || 1;
+      const savedTotalSolved = questState.totalSolved || 0;
+      const savedTotalTalers = questState.totalTalers || 0;
+      questState = { active:true, currentIndex:0, attempts:0, totalPoints:0, totalTalers:savedTotalTalers, teamMembers:[], solved:[], locked:false, lockedUntil:0, teamCode:null, teamReady:false, level:savedLevel, totalSolved:savedTotalSolved };
+    }
+  } else {
+    const savedLevel = questState.level || 1;
+    const savedTotalSolved = questState.totalSolved || 0;
+    const savedTotalTalers = questState.totalTalers || 0;
+    questState = { active:true, currentIndex:0, attempts:0, totalPoints:0, totalTalers:savedTotalTalers, teamMembers:[], solved:[], locked:false, lockedUntil:0, teamCode:null, teamReady:false, level:savedLevel, totalSolved:savedTotalSolved };
+  }
   const q = KASPAR_QUESTS[0];
   const loc = LOCATIONS.find(l => l.id === q.spotId);
   document.getElementById('chat-location-label').textContent = `${loc.name} · ${loc.period}`;
@@ -1329,37 +1380,56 @@ document.getElementById('auth-modal').addEventListener('click', function(e) {
   if (e.target === this) closeAuth();
 });
 
-async function submitLogin() {
-  const email = document.getElementById('login-email').value.trim();
-  const pw = document.getElementById('login-pw').value;
-  const err = document.getElementById('login-err');
+// 3-Wort-Auth: Neue Worte generieren
+async function generateMagicWords() {
+  const err = document.getElementById('reg-err');
   err.style.display = 'none';
-  if (!email || !pw) { err.textContent='E-Mail und Passwort erforderlich'; err.style.display='block'; return; }
   try {
-    const r = await fetch('/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email,password:pw}) });
+    const r = await fetch('/auth/words', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({}) });
     const d = await r.json();
-    if (!r.ok) { err.textContent = d.error||'Login fehlgeschlagen'; err.style.display='block'; return; }
-    localStorage.setItem('kq_token', d.token);
-    localStorage.setItem('kq_user', JSON.stringify(d.user));
-    setUser(d.user); closeAuth();
+    if (!r.ok) { err.textContent = d.error||'Fehler beim Generieren'; err.style.display='block'; return; }
+    const display = document.getElementById('magic-words-display');
+    display.textContent = d.words.toUpperCase();
+    localStorage.setItem('kq_words', d.words);
+    localStorage.setItem('kq_currentWords', d.words);
   } catch { err.textContent='Server nicht erreichbar'; err.style.display='block'; }
 }
 
-async function submitRegister() {
-  const username = document.getElementById('reg-name').value.trim();
-  const email = document.getElementById('reg-email').value.trim();
-  const pw = document.getElementById('reg-pw').value;
-  const err = document.getElementById('reg-err');
+// 3-Wort-Auth: Worte kopieren
+function copyMagicWords() {
+  const words = document.getElementById('magic-words-display').textContent;
+  if (words && !words.includes('Klick')) {
+    navigator.clipboard.writeText(words.toLowerCase()).then(() => {
+      alert('✓ Worte kopiert!');
+    });
+  }
+}
+
+// 3-Wort-Auth: Einloggen mit Worten
+async function submitWordsLogin() {
+  const words = document.getElementById('login-words').value.trim().toLowerCase();
+  const err = document.getElementById('login-err');
   err.style.display = 'none';
-  if (!username || !email || !pw) { err.textContent='Alle Felder erforderlich'; err.style.display='block'; return; }
-  if (pw.length < 6) { err.textContent='Passwort min. 6 Zeichen'; err.style.display='block'; return; }
+
+  if (!words) { err.textContent='Gib deine 3 Geheimworte ein'; err.style.display='block'; return; }
+
   try {
-    const r = await fetch('/auth/register', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username,email,password:pw}) });
+    const r = await fetch('/auth/words-login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({words}) });
     const d = await r.json();
-    if (!r.ok) { err.textContent = d.error||'Registrierung fehlgeschlagen'; err.style.display='block'; return; }
-    localStorage.setItem('kq_token', d.token);
-    localStorage.setItem('kq_user', JSON.stringify(d.user));
-    setUser(d.user); closeAuth();
+    if (!r.ok) { err.textContent = d.error||'Einloggen fehlgeschlagen'; err.style.display='block'; return; }
+
+    // Profil laden & speichern
+    localStorage.setItem('kq_words', d.profile.words);
+    localStorage.setItem('kq_questState', JSON.stringify(d.profile.questState));
+
+    // User-Objekt für Header setzen
+    currentUser = { username: 'Detektiv', rank: 'Forscher' };
+    questState = d.profile.questState;
+
+    setUser(currentUser);
+    updateLevelBadge();
+    renderRouteGrid();
+    closeAuth();
   } catch { err.textContent='Server nicht erreichbar'; err.style.display='block'; }
 }
 
@@ -1502,12 +1572,14 @@ async function sendMessage() {
 
   addMsg(msg, 'user');
   chatHistory.push({ role:'user', content:msg });
+  saveChat(msg, 'user'); // 💾 Chat speichern
   input.value = '';
 
   if (!questState.active && (msg.toLowerCase().includes('quest') || msg.toLowerCase().includes('rätsel') || msg.toLowerCase().includes('spielen') || msg.toLowerCase().includes('start') || msg.toLowerCase().includes('beginnen'))) {
     const r = startQuest();
     addMsg(r, 'bot');
     chatHistory.push({ role:'assistant', content:r });
+    saveChat(r, 'bot'); // 💾 Chat speichern
     setTimeout(() => updateDebugPanel?.(), 100);
     return;
   }
@@ -1517,6 +1589,7 @@ async function sendMessage() {
     if (questResponse) {
       addMsg(questResponse, 'bot');
       chatHistory.push({ role:'assistant', content:questResponse });
+      saveChat(questResponse, 'bot'); // 💾 Chat speichern
       updateTalersHeader();
       setTimeout(() => updateDebugPanel?.(), 100);
       return;
@@ -1538,12 +1611,15 @@ async function sendMessage() {
     if (r.ok) {
       addMsg(d.response, 'bot');
       chatHistory.push({ role:'assistant', content:d.response });
+      saveChat(d.response, 'bot'); // 💾 Chat speichern
     } else {
       addMsg('Fehler: ' + (d.error||'Unbekannt'), 'bot');
+      saveChat('Fehler: ' + (d.error||'Unbekannt'), 'bot'); // 💾 Chat speichern
     }
   } catch {
     loading.remove();
     addMsg('Server nicht erreichbar — START.bat starten!', 'bot');
+    saveChat('Server nicht erreichbar — START.bat starten!', 'bot'); // 💾 Chat speichern
   }
   btn.disabled = false;
 }
